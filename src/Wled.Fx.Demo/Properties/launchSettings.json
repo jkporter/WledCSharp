@@ -1,0 +1,8 @@
+{
+  "profiles": {
+    "Wled.Fx.Demo": {
+      "commandName": "Project",
+      "commandLineArgs": "play Fireworks --length 85 --seconds 60 --host wled-dishwasher-status"
+    }
+  }
+}

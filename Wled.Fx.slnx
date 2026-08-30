@@ -1,0 +1,9 @@
+<Solution>
+  <Folder Name="/src/">
+    <Project Path="src/Wled.Fx.Demo/Wled.Fx.Demo.csproj" />
+    <Project Path="src/Wled.Fx/Wled.Fx.csproj" />
+  </Folder>
+  <Folder Name="/tests/">
+    <Project Path="tests/Wled.Fx.Tests/Wled.Fx.Tests.csproj" />
+  </Folder>
+</Solution>

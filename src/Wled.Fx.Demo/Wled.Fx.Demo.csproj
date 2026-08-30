@@ -1,0 +1,13 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <RootNamespace>Wled.Fx.Demo</RootNamespace>
+    <AssemblyName>wledfx</AssemblyName>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="../Wled.Fx/Wled.Fx.csproj" />
+  </ItemGroup>
+
+</Project>

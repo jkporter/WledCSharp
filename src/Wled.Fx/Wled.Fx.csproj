@@ -1,0 +1,10 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <RootNamespace>Wled.Fx</RootNamespace>
+    <AssemblyName>Wled.Fx</AssemblyName>
+    <AllowUnsafeBlocks>false</AllowUnsafeBlocks>
+    <Description>A C# port of the WLED effect engine (FX.cpp, FX_fcn.cpp, FX_2Dfcn.cpp, colors.cpp and supporting structures).</Description>
+  </PropertyGroup>
+
+</Project>
