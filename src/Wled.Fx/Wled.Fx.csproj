@@ -4,6 +4,8 @@
     <RootNamespace>Wled.Fx</RootNamespace>
     <AssemblyName>Wled.Fx</AssemblyName>
     <AllowUnsafeBlocks>false</AllowUnsafeBlocks>
+    <IsPackable>true</IsPackable>
+    <PackageId>Wled.Fx</PackageId>
     <Description>A C# port of the WLED effect engine (FX.cpp, FX_fcn.cpp, FX_2Dfcn.cpp, colors.cpp and supporting structures).</Description>
   </PropertyGroup>
 

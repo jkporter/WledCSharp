@@ -7,4 +7,27 @@
     <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
     <EnforceCodeStyleInBuild>false</EnforceCodeStyleInBuild>
   </PropertyGroup>
+
+  <!-- Packaging. Only Wled.Fx opts in with IsPackable; everything else stays out of the feed. -->
+  <PropertyGroup>
+    <IsPackable>false</IsPackable>
+    <VersionPrefix>0.1.0</VersionPrefix>
+    <Authors>Jonathan Porter</Authors>
+    <Copyright>Copyright (c) 2016-present Christian Schwinne and individual WLED contributors; Copyright (c) 2026 Jonathan Porter (C# port)</Copyright>
+    <PackageLicenseFile>LICENSE</PackageLicenseFile>
+    <PackageReadmeFile>README.md</PackageReadmeFile>
+    <PackageProjectUrl>https://github.com/jkporter/WledCSharp</PackageProjectUrl>
+    <RepositoryUrl>https://github.com/jkporter/WledCSharp</RepositoryUrl>
+    <RepositoryType>git</RepositoryType>
+    <PackageTags>wled;led;leds;effects;addressable;neopixel;animation</PackageTags>
+    <PublishRepositoryUrl>true</PublishRepositoryUrl>
+    <DebugType>embedded</DebugType>
+    <EmbedUntrackedSources>true</EmbedUntrackedSources>
+    <ContinuousIntegrationBuild Condition="'$(CI)' == 'true'">true</ContinuousIntegrationBuild>
+  </PropertyGroup>
+
+  <ItemGroup Condition="'$(IsPackable)' == 'true'">
+    <None Include="$(MSBuildThisFileDirectory)LICENSE" Pack="true" PackagePath="/" Visible="false" />
+    <None Include="$(MSBuildThisFileDirectory)README.md" Pack="true" PackagePath="/" Visible="false" />
+  </ItemGroup>
 </Project>
