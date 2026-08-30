@@ -142,5 +142,6 @@ device. The format is documented at
 
 ## Licence
 
-WLED is EUPL v1.2. Parts derive from FastLED 3.6.0 (MIT), as marked in the source. This port carries
-the same terms as the code it was translated from.
+[EUPL v1.2 or later](LICENSE), the same terms as the WLED code this was translated from. Portions
+derive from FastLED 3.6.0 and remain under the MIT licence; those, and the provenance of the
+cpt-city palettes, are set out in [THIRD-PARTY-NOTICES.md](THIRD-PARTY-NOTICES.md).
