@@ -88,6 +88,7 @@ public static class NatureEffects
     /// Candle flicker: the brightness walks towards a fresh random target, and the step size is set
     /// so it always arrives in roughly the same number of frames.
     /// </summary>
+    /// <param name="seg">The segment to render into.</param>
     /// <param name="multi">Give every pixel its own flame instead of flickering the segment as one.</param>
     private static void CandleBase(Segment seg, bool multi)
     {

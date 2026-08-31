@@ -11,7 +11,7 @@
   <!-- Packaging. Only Wled.Fx opts in with IsPackable; everything else stays out of the feed. -->
   <PropertyGroup>
     <IsPackable>false</IsPackable>
-    <VersionPrefix>0.1.0</VersionPrefix>
+    <VersionPrefix>0.1.1</VersionPrefix>
     <Authors>Jonathan Porter</Authors>
     <Copyright>Copyright (c) 2016-present Christian Schwinne and individual WLED contributors; Copyright (c) 2026 Jonathan Porter (C# port)</Copyright>
     <PackageLicenseFile>LICENSE</PackageLicenseFile>

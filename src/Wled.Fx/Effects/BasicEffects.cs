@@ -148,6 +148,7 @@ public static class BasicEffects
     /// <summary>
     /// Fills the segment one pixel at a time, then clears it again.
     /// </summary>
+    /// <param name="seg">The segment to render into.</param>
     /// <param name="reverse">Clear from the far end rather than the near one.</param>
     /// <param name="useRandomColors">Pick a fresh random colour for each pass.</param>
     private static void ColorWipeBase(Segment seg, bool reverse, bool useRandomColors)
@@ -495,6 +496,7 @@ public static class BasicEffects
     }
 
     /// <summary>A band of palette colour travelling along the segment.</summary>
+    /// <param name="seg">The segment to render into.</param>
     /// <param name="loading">
     /// Sweep in one direction with a hard edge behind it, rather than fading away on both sides.
     /// </param>
@@ -601,6 +603,7 @@ public static class BasicEffects
     }
 
     /// <summary>Blocks of palette colour with a soft edge, spread evenly along the segment.</summary>
+    /// <param name="seg">The segment to render into.</param>
     /// <param name="threshold">How much of each block is lit; lower values light more of it.</param>
     internal static void SpotsBase(Segment seg, int threshold)
     {

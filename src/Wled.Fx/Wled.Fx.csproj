@@ -6,6 +6,9 @@
     <AllowUnsafeBlocks>false</AllowUnsafeBlocks>
     <IsPackable>true</IsPackable>
     <PackageId>Wled.Fx</PackageId>
+    <GenerateDocumentationFile>true</GenerateDocumentationFile>
+    <!-- Ship the XML docs that exist; the port is not documented member by member. -->
+    <NoWarn>$(NoWarn);CS1591</NoWarn>
     <Description>A C# port of the WLED effect engine (FX.cpp, FX_fcn.cpp, FX_2Dfcn.cpp, colors.cpp and supporting structures).</Description>
   </PropertyGroup>
 

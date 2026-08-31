@@ -96,6 +96,7 @@ public static class ChaseEffects
     /// <summary>
     /// Two adjacent bands of colour running along a background.
     /// </summary>
+    /// <param name="seg">The segment to render into.</param>
     /// <param name="color1">Background colour.</param>
     /// <param name="color2">Leading band.</param>
     /// <param name="color3">Trailing band.</param>

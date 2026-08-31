@@ -144,6 +144,7 @@ public static class NoiseEffects
     /// <summary>
     /// Sine waves whose phase change accelerates along the segment.
     /// </summary>
+    /// <param name="seg">The segment to render into.</param>
     /// <param name="moder">0 keeps the modulus fixed, 1 randomises it with Perlin noise.</param>
     private static void PhasedBase(Segment seg, byte moder)
     {
