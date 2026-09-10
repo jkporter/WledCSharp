@@ -38,7 +38,8 @@ Not ported:
 
 - **Audio reactive (30 effects)** - Gravcenter, Freqwave, Matripix, GEQ and the rest need a live FFT
   and volume feed from the AudioReactive usermod. `EffectMetadata.Dimensions` still reports
-  `Volume`/`Frequency` for them, so the slots are ready if you want to add an audio source.
+  `Volume`/`Frequency` for them, and [External data](#external-data) is the seam an audio source
+  would publish through, so the slots are ready if you want to add one.
 - **Particle system (31 effects)** - the PS effects are a thin layer over `FXparticleSystem.cpp`, a
   separate ~3000-line physics engine that would be its own port.
 - **Six others** with external dependencies or unusual size: Image (GIF decoding from a filesystem),
@@ -87,6 +88,9 @@ reproducible in tests. Everything else - the strip, the segments, the palettes -
 | `SEGPALETTE` | `seg.CurrentPalette` |
 | `strip.now` | `seg.Now` |
 | `SEGENV.allocateData(n)` | `seg.GetData<T>(n)` |
+| `um_data_t` | `IModuleData` |
+| `UsermodManager::getUmData(&d, id)` | `seg.GetModuleData<T>(id)` |
+| `USERMOD_ID_*` | `ModuleId` |
 | `color_blend`, `color_add`, `color_fade` | `Rgbw.Blend`, `.Add`, `.Fade` |
 | `beatsin8_t`, `perlin8` | `Beat.Sin8`, `Perlin.Noise8` |
 
@@ -113,7 +117,7 @@ built-in palette as a swatch.
 dotnet test
 ```
 
-196 tests. Beyond the math and colour parity checks, `EffectSmokeTests` runs every registered effect
+202 tests. Beyond the math and colour parity checks, `EffectSmokeTests` runs every registered effect
 for a stretch of frames on five strip shapes - one pixel, two pixels, a long strip, a square matrix,
 a wide matrix - with the sliders at both extremes, and asserts that each one lights something. Hand
 translating tight integer code invites off-by-one indexing, and that test is where it surfaces.
@@ -139,6 +143,75 @@ The metadata string is the WLED format - name, slider labels, colour labels, pal
 defaults - and `EffectMetadata` parses it, so the sliders and defaults behave as they would on a
 device. The format is documented at
 <https://kno.wled.ge/interfaces/json-api/#effect-metadata>.
+
+Every ID from 0 to 219 is claimed by the WLED protocol, so a custom effect takes over one that is
+not ported - 200, above, is Particle Ghost Rider.
+
+## External data
+
+An effect is handed nothing but its `Segment`, so live host state - a download percentage, a sensor
+reading, an audio spectrum - has to reach it some other way. The firmware's answer is a side channel:
+a usermod publishes a `um_data_t` bag and the effect pulls it back out by module ID inside its own
+body. Same seam here. The host publishes whenever the value changes:
+
+```csharp
+public sealed record ProgressData(float Fraction, bool Indeterminate = false) : IModuleData;
+
+strip.Modules.Publish(ModuleId.UserBase, new ProgressData(0.42f));
+```
+
+and the effect looks it up as it draws:
+
+```csharp
+// the getAudioData() shape: read the module, fall back to a simulation, never return null
+private static ProgressData GetProgress(Segment seg)
+    => seg.GetModuleData<ProgressData>(ModuleId.UserBase) ?? Simulate(seg);
+
+public static void Progress(Segment seg)
+{
+    ProgressData progress = GetProgress(seg);
+    int target = (int)MathF.Round(Math.Clamp(progress.Fraction, 0f, 1f) * seg.Length);
+
+    for (int i = 0; i < seg.Length; i++)
+    {
+        seg.SetPixelColor(i, i < seg.Aux1
+            ? seg.ColorFromPalette(i, true, seg.PaletteSolidWrap, 0)
+            : seg.Color(1));
+    }
+
+    // ease towards the reported level rather than snapping to it
+    int size = 1 + ((seg.Speed * seg.Length) >> 11);
+    if (target > seg.Aux1) seg.Aux1 = (ushort)Math.Min(seg.Aux1 + size, target);
+    else if (target < seg.Aux1) seg.Aux1 = (ushort)Math.Max(seg.Aux1 > size ? seg.Aux1 - size : 0, target);
+}
+```
+
+Three details carry the pattern, and all three are the firmware's. The lookup is **keyed by module
+ID**, so several producers coexist and an effect takes only what it understands. The data is **read
+fresh every frame** rather than captured when the effect is registered, so the effect sees the
+current value and nothing has to be threaded through the signature. And the lookup **may come back
+empty** - `GetModuleData` returns null when nobody is publishing - so an effect supplies its own
+fallback, the way the audio effects fall back to `simulateSound()`. That is what keeps it drawing
+something in a mode list with no host attached.
+
+Publishing is a single reference store, so a worker thread can publish while the render thread is
+mid-frame: make the published type immutable and republish on each update, and there is nothing to
+lock. `ModuleId` carries the firmware's `USERMOD_ID_*` values, and IDs from `ModuleId.UserBase` up
+are yours. The registry lives on the strip rather than in a global, so two strips do not see each
+other's data.
+
+The complete effect, and a demo that drives it from a worker thread, are in
+`src/Wled.Fx.Demo/ProgressEffect.cs`:
+
+```bash
+dotnet run --project src/Wled.Fx.Demo -- progress --seconds 8
+```
+
+```bash
+dotnet run --project src/Wled.Fx.Demo -- play Progress --palette 11 --seconds 5
+```
+
+The second runs the same effect with nothing published, on the simulated fallback.
 
 ## Licence
 

@@ -579,3 +579,90 @@ public class StripTests
         Assert.InRange(output[0].R, 120, 136);
     }
 }
+
+/// <summary>
+/// Covers the external data seam: how a host hands an effect live values, given that an effect is
+/// passed nothing but its segment. Port of the <c>UsermodManager::getUmData()</c> side channel.
+/// </summary>
+public class ModuleTests
+{
+    private const byte TestModule = ModuleId.UserBase;
+
+    private sealed record Level(int Pixels) : IModuleData;
+
+    private sealed record OtherData : IModuleData;
+
+    /// <summary>An effect body that reads its data the way the audio effects read theirs.</summary>
+    private static void RenderBar(Segment seg)
+    {
+        int lit = seg.GetModuleData<Level>(TestModule)?.Pixels ?? 0;
+        for (int i = 0; i < seg.Length; i++)
+            seg.SetPixelColor(i, i < lit ? new Rgbw(255, 255, 255) : new Rgbw(0, 0, 0));
+    }
+
+    [Fact]
+    public void PublishedData_ReachesTheEffectThroughItsSegment()
+    {
+        var strip = new LedStrip(10);
+        strip.Modules.Publish(TestModule, new Level(3));
+
+        Assert.Equal(1, strip.Modules.Count);
+        Assert.Equal(new Level(3), strip.MainSegment.GetModuleData<Level>(TestModule));
+    }
+
+    [Fact]
+    public void Remove_StopsPublishing()
+    {
+        var strip = new LedStrip(10);
+        strip.Modules.Publish(TestModule, new Level(3));
+
+        Assert.True(strip.Modules.Remove(TestModule));
+        Assert.False(strip.Modules.Remove(TestModule));
+        Assert.Null(strip.MainSegment.GetModuleData<Level>(TestModule));
+    }
+
+    [Fact]
+    public void AskingForTheWrongTypeReadsAsNothingPublished()
+    {
+        var strip = new LedStrip(10);
+        strip.Modules.Publish(TestModule, new OtherData());
+
+        Assert.Null(strip.MainSegment.GetModuleData<Level>(TestModule));
+    }
+
+    [Fact]
+    public void ASegmentWithNoStripHasNoModules()
+        => Assert.Null(new Segment(0, 10).GetModuleData<Level>(TestModule));
+
+    [Fact]
+    public void StripsDoNotSeeEachOthersModules()
+    {
+        var one = new LedStrip(10);
+        var two = new LedStrip(10);
+        one.Modules.Publish(TestModule, new Level(3));
+
+        Assert.NotNull(one.MainSegment.GetModuleData<Level>(TestModule));
+        Assert.Null(two.MainSegment.GetModuleData<Level>(TestModule));
+    }
+
+    [Fact]
+    public void AnEffectPicksUpDataRepublishedBetweenFrames()
+    {
+        var strip = new LedStrip(10) { Brightness = 255 };
+        Segment seg = strip.MainSegment;
+        seg.StopTransition();
+
+        strip.Modules.Publish(TestModule, new Level(2));
+        seg.BeginDraw();
+        RenderBar(seg);
+        strip.Show();
+        Assert.False(strip.GetPixelColor(1).IsBlack);
+        Assert.True(strip.GetPixelColor(4).IsBlack);
+
+        strip.Modules.Publish(TestModule, new Level(6)); // the host reports more progress
+        seg.BeginDraw();
+        RenderBar(seg);
+        strip.Show();
+        Assert.False(strip.GetPixelColor(4).IsBlack);
+    }
+}

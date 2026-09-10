@@ -161,6 +161,12 @@ public sealed class LedStrip
     /// <summary>Whether palette lookups wrap.</summary>
     public PaletteBlendMode PaletteBlend { get; set; } = PaletteBlendMode.WrapWhenMoving;
 
+    /// <summary>
+    /// External data the host publishes for effects on this strip to read; see
+    /// <see cref="ModuleRegistry"/> and <see cref="Segment.GetModuleData{T}"/>.
+    /// </summary>
+    public ModuleRegistry Modules { get; } = new();
+
     /// <summary>Frames per second the engine aims for; 0 renders as fast as it is called.</summary>
     public int TargetFps
     {

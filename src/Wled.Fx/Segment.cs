@@ -264,6 +264,20 @@ public sealed partial class Segment
     public void ClearData() => _data = null;
 
     /// <summary>
+    /// Returns the data <paramref name="moduleId"/> is publishing on this segment's strip, or null
+    /// when nothing is publishing it. Port of <c>UsermodManager::getUmData()</c>.
+    /// </summary>
+    /// <remarks>
+    /// This is how an effect reaches live host data, given that it is handed nothing but the
+    /// segment. Call it once per frame rather than caching the result: the host is expected to
+    /// republish as the value changes. Effects that need to draw something regardless should fall
+    /// back to simulated data when this returns null, the way the firmware's audio effects fall back
+    /// to <c>simulateSound()</c>.
+    /// </remarks>
+    public T? GetModuleData<T>(byte moduleId) where T : class, IModuleData
+        => Strip is { } strip && strip.Modules.TryGet(moduleId, out T? data) ? data : null;
+
+    /// <summary>
     /// Clears runtime state if a reset was requested. Called by the engine before the effect runs,
     /// never from inside an effect.
     /// </summary>

@@ -13,6 +13,8 @@ internal static class Program
 {
     private static int Main(string[] args)
     {
+        ProgressEffect.Register(); // a host-supplied effect, so 'list' and 'play' pick it up too
+
         if (args.Length == 0 || args[0] is "-h" or "--help" or "help")
         {
             PrintUsage();
@@ -26,6 +28,7 @@ internal static class Program
                 "list" => ListEffects(args),
                 "palettes" => ListPalettes(),
                 "play" => Play(args),
+                "progress" => ShowProgress(args),
                 _ => Unknown(args[0]),
             };
         }
@@ -52,20 +55,29 @@ internal static class Program
               wledfx list [filter]              list the implemented effects
               wledfx palettes                   list the built-in palettes
               wledfx play <effect> [options]    preview an effect in the terminal
+              wledfx progress [options]         run the Progress effect off live external data
 
             Play options:
               --length <n>      strip length, default 60
               --height <n>      matrix height, default 1
-              --palette <n>     palette id, default the effect own
+              --palette <n>     palette id, default 11 (Rainbow)
               --speed <0-255>
               --intensity <0-255>
-              --color <hex>     primary colour, e.g. FF8000
+              --color <hex>     primary colour, e.g. FF8000; on its own it keeps palette 0,
+                                which is built from the colour
               --seconds <n>     how long to run, default 10
               --fps <n>         frame rate, default 30
 
             The effect may be given by id or by name:
               wledfx play Fireworks --length 80 --seconds 5
               wledfx play 66 --height 16 --length 16
+
+            Progress options:
+              --length, --height, --seconds, --fps as above
+              --indeterminate   report an unknown total, so the bar sweeps
+
+            'progress' fakes a job that publishes its progress from a worker thread;
+            'play Progress' runs the same effect with nothing published, on simulated data.
             """);
     }
 
@@ -144,14 +156,12 @@ internal static class Program
         seg.SetMode(effect.Id, loadDefaults: true);
         seg.StopTransition(); // start on the effect itself rather than fading in from Solid
 
-        if (TryIntOption(args, "--palette", out int palette)) seg.SetPalette((byte)palette);
+        ApplyLook(seg, args);
         if (TryIntOption(args, "--speed", out int speed)) seg.Speed = (byte)speed;
         if (TryIntOption(args, "--intensity", out int intensity)) seg.Intensity = (byte)intensity;
-        if (StringOption(args, "--color") is { } hex && uint.TryParse(hex, NumberStyles.HexNumber, null, out uint color))
-            seg.SetColor(0, color);
         seg.StopTransition();
 
-        Console.WriteLine($"{effect.Name} on {length}x{height}, palette {Palettes.NameOf(seg.Palette)} - press Ctrl+C to stop");
+        Console.WriteLine($"{effect.Name} on {length}×{height}, palette {Palettes.NameOf(seg.Palette)} - press Ctrl+C to stop");
         Console.WriteLine();
 
         UdpClient? client = null;
@@ -184,6 +194,77 @@ internal static class Program
 
                 Thread.Sleep(1);
             }
+        }
+        finally
+        {
+            Console.Write("\u001b[?25h\u001b[0m"); // show it again
+            Console.WriteLine();
+        }
+        return 0;
+    }
+
+    /// <summary>
+    /// Runs the Progress effect against live external data: a worker thread reports how far along a
+    /// fake job is, and the effect picks that up through the strip's module registry.
+    /// </summary>
+    private static int ShowProgress(string[] args)
+    {
+        int length = IntOption(args, "--length", 60);
+        int height = IntOption(args, "--height", 1);
+        int seconds = IntOption(args, "--seconds", 10);
+        int fps = IntOption(args, "--fps", 30);
+        bool indeterminate = Array.IndexOf(args, "--indeterminate") >= 0;
+
+        var strip = new LedStrip(length, height) { Brightness = 255, TargetFps = fps };
+        Segment seg = strip.MainSegment;
+        seg.SetMode(ProgressEffect.Id, loadDefaults: true);
+        ApplyLook(seg, args);
+        if (TryIntOption(args, "--speed", out int speed)) seg.Speed = (byte)speed;
+        seg.StopTransition();
+
+        Console.WriteLine($"Fake job on {length}×{height}, published as module {ProgressEffect.ProgressModule} "
+            + "from a worker thread - press Ctrl+C to stop");
+        Console.WriteLine();
+
+        using var cancellation = new CancellationTokenSource(TimeSpan.FromSeconds(seconds));
+        Console.CancelKeyPress += (_, e) =>
+        {
+            e.Cancel = true;
+            cancellation.Cancel();
+        };
+
+        // the host side: whatever is doing the actual work republishes as it goes
+        CancellationToken token = cancellation.Token;
+        Task worker = Task.Run(async () =>
+        {
+            var elapsed = System.Diagnostics.Stopwatch.StartNew();
+            var total = TimeSpan.FromSeconds(seconds * 0.8);
+            try
+            {
+                while (!token.IsCancellationRequested)
+                {
+                    var fraction = (float)(elapsed.Elapsed / total);
+                    strip.Modules.Publish(ProgressEffect.ProgressModule,
+                        new ProgressData(fraction, indeterminate));
+                    await Task.Delay(100, token).ConfigureAwait(false);
+                }
+            }
+            catch (OperationCanceledException)
+            {
+                // the run is over; nothing to clean up
+            }
+        });
+
+        Console.Write("\u001b[?25l"); // hide the cursor
+        try
+        {
+            var frame = new StringBuilder();
+            while (!cancellation.IsCancellationRequested)
+            {
+                if (strip.Service()) Render(strip, frame, height);
+                Thread.Sleep(1);
+            }
+            worker.Wait();
         }
         finally
         {
@@ -234,6 +315,39 @@ internal static class Program
     }
 
     private static string Background(Rgbw c) => $"\u001b[48;2;{c.R};{c.G};{c.B}m";
+
+    /// <summary>Warm white, so an effect that draws with the primary colour shows up.</summary>
+    private static readonly Rgbw DefaultColor = new(255, 190, 130);
+
+    /// <summary>Palette to preview with when the caller names neither a palette nor a colour.</summary>
+    private const byte DefaultPalette = 11; // Rainbow
+
+    /// <summary>
+    /// Applies the <c>--palette</c> and <c>--color</c> options, defaulting to a look that is
+    /// actually visible.
+    /// </summary>
+    /// <remarks>
+    /// A segment starts with all three colour slots black, matching the firmware, and palette 0 is
+    /// built out of those slots - so an effect previewed at bare defaults draws black on black. The
+    /// preview is not the place to reproduce that, so it fills in a colour and a palette. Naming
+    /// either one is taken as knowing what you want: a colour on its own keeps palette 0, which is
+    /// how you preview an effect in a single colour.
+    /// </remarks>
+    private static void ApplyLook(Segment seg, string[] args)
+    {
+        bool named = false;
+
+        if (StringOption(args, "--color") is { } hex
+            && uint.TryParse(hex, NumberStyles.HexNumber, null, out uint color))
+        {
+            seg.SetColor(0, color);
+            named = true;
+        }
+        else seg.SetColor(0, DefaultColor);
+
+        if (TryIntOption(args, "--palette", out int palette)) seg.SetPalette((byte)palette);
+        else if (!named) seg.SetPalette(DefaultPalette);
+    }
 
     private static EffectInfo? ResolveEffect(string token)
     {
