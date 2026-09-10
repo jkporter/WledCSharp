@@ -1,6 +1,7 @@
 using System.Globalization;
 using System.Net.Sockets;
 using System.Text;
+using System.Text.Json.Nodes;
 using Wled.Fx;
 
 namespace Wled.Fx.Demo;
@@ -29,6 +30,7 @@ internal static class Program
                 "palettes" => ListPalettes(),
                 "play" => Play(args),
                 "progress" => ShowProgress(args),
+                "preset" => ApplyPreset(args),
                 _ => Unknown(args[0]),
             };
         }
@@ -56,6 +58,7 @@ internal static class Program
               wledfx palettes                   list the built-in palettes
               wledfx play <effect> [options]    preview an effect in the terminal
               wledfx progress [options]         run the Progress effect off live external data
+              wledfx preset <file> [key]        apply a preset out of a WLED presets.json
 
             Play options:
               --length <n>      strip length, default 60
@@ -78,6 +81,15 @@ internal static class Program
 
             'progress' fakes a job that publishes its progress from a worker thread;
             'play Progress' runs the same effect with nothing published, on simulated data.
+
+            Preset options:
+              --length, --height, --seconds, --fps as above
+
+            The key is the preset id it is filed under, or its name; with no key the presets in
+            the file are listed. The strip is sized by --length and --height, so give it the
+            shape the preset was saved on or its segment bounds will not line up:
+              wledfx preset presets.json 3 --length 120
+              wledfx preset presets.json "Sunset" --length 16 --height 16
             """);
     }
 
@@ -272,6 +284,111 @@ internal static class Program
             Console.WriteLine();
         }
         return 0;
+    }
+
+    /// <summary>
+    /// Applies a preset out of a WLED <c>presets.json</c> and previews the result, which is what
+    /// the firmware does when a preset is recalled: read the object filed under that key, hand it
+    /// to the state deserializer, carry on rendering.
+    /// </summary>
+    private static int ApplyPreset(string[] args)
+    {
+        if (args.Length < 2)
+        {
+            Console.Error.WriteLine("error: preset needs the path to a presets.json");
+            return 1;
+        }
+
+        string path = args[1];
+        JsonObject file = PresetLoader.LoadFile(path);
+        string? key = args.Length > 2 && !args[2].StartsWith("--", StringComparison.Ordinal) ? args[2] : null;
+
+        if (key is null) return ListPresets(file, path);
+
+        (string Key, JsonObject Preset)? found = PresetLoader.Find(file, key);
+        if (found is null)
+        {
+            Console.Error.WriteLine($"error: {path} has no preset '{key}'");
+            ListPresets(file, path);
+            return 1;
+        }
+
+        (string id, JsonObject preset) = found.Value;
+        int length = IntOption(args, "--length", 60);
+        int height = IntOption(args, "--height", 1);
+        int seconds = IntOption(args, "--seconds", 10);
+        int fps = IntOption(args, "--fps", 30);
+
+        var strip = new LedStrip(length, height) { Brightness = 255, TargetFps = fps };
+        var loader = new PresetLoader(strip);
+        loader.ApplyPreset(preset);
+
+        // a preset is applied to a running strip, so its effects fade in; start on them instead
+        foreach (Segment segment in strip.Segments) segment.StopTransition();
+
+        Console.WriteLine($"Preset {id}: {PresetLoader.NameOf(preset) ?? "(unnamed)"} on {length}×{height}, "
+            + $"brightness {strip.Brightness}");
+        foreach (Segment segment in strip.Segments)
+        {
+            if (!segment.IsActive) continue;
+            string name = segment.Name is { Length: > 0 } n ? $" \"{n}\"" : string.Empty;
+            Console.WriteLine($"  seg{name} {segment.Start}-{segment.Stop}"
+                + $"  {EffectRegistry.Get(segment.Mode).Name} (fx {segment.Mode})"
+                + $"  palette {Palettes.NameOf(segment.Palette)}"
+                + $"  sx {segment.Speed} ix {segment.Intensity}"
+                + $"  col {segment.Colors[0]}"
+                + (segment.On ? string.Empty : "  [off]"));
+        }
+        if (loader.Skipped.Count > 0)
+        {
+            Console.WriteLine($"  ignored: {string.Join(", ", loader.Skipped)} - state a rendering library does not own");
+        }
+        Console.WriteLine();
+
+        Preview(strip, height, seconds);
+        return 0;
+    }
+
+    /// <summary>Prints what a preset file holds, which is the answer to "what keys can I pass?".</summary>
+    private static int ListPresets(JsonObject file, string path)
+    {
+        int shown = 0;
+        foreach ((string id, JsonObject preset) in PresetLoader.All(file))
+        {
+            string kind = PresetLoader.IsPlaylist(preset) ? " (playlist)" : string.Empty;
+            Console.WriteLine($"{id,4}  {PresetLoader.NameOf(preset) ?? "(unnamed)"}{kind}");
+            shown++;
+        }
+        Console.WriteLine();
+        Console.WriteLine($"{shown} preset(s) in {path}");
+        return 0;
+    }
+
+    /// <summary>Runs the strip for a while, drawing each frame in the terminal.</summary>
+    private static void Preview(LedStrip strip, int height, int seconds)
+    {
+        using var cancellation = new CancellationTokenSource(TimeSpan.FromSeconds(seconds));
+        Console.CancelKeyPress += (_, e) =>
+        {
+            e.Cancel = true;
+            cancellation.Cancel();
+        };
+
+        Console.Write("\u001b[?25l"); // hide the cursor
+        try
+        {
+            var frame = new StringBuilder();
+            while (!cancellation.IsCancellationRequested)
+            {
+                if (strip.Service()) Render(strip, frame, height);
+                Thread.Sleep(1);
+            }
+        }
+        finally
+        {
+            Console.Write("\u001b[?25h\u001b[0m"); // show it again
+            Console.WriteLine();
+        }
     }
 
     /// <summary>Draws the current frame, using one line per matrix row.</summary>

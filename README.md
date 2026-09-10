@@ -213,6 +213,64 @@ dotnet run --project src/Wled.Fx.Demo -- play Progress --palette 11 --seconds 5
 
 The second runs the same effect with nothing published, on the simulated fallback.
 
+## Presets
+
+A device's `presets.json` is an object keyed by preset ID, and each value is a saved state - the
+same shape the JSON API takes over HTTP:
+
+```json
+{"0":{},"1":{"n":"Sunset","on":true,"bri":200,"seg":[{"id":0,"start":0,"stop":60,"fx":2,"sx":60,"pal":35,"col":[[255,160,0],[64,0,96],[0,0,0]]}]}}
+```
+
+So recalling one is what the firmware does in `handlePresets()`: pull the object out by key, hand it
+to `deserializeState()`, carry on rendering. `src/Wled.Fx.Demo/PresetLoader.cs` is a port of that
+path - `deserializeState` and `deserializeSegment` from `json.cpp`, on top of the value syntax in
+`util.cpp` - and it lives in the demo rather than the library, because reading files and parsing
+JSON is a host's job and the engine deliberately does neither.
+
+```csharp
+JsonObject file = PresetLoader.LoadFile("presets.json");
+(string id, JsonObject preset) = PresetLoader.Find(file, "Sunset")!.Value;
+
+var strip = new LedStrip(length: 60);
+new PresetLoader(strip).ApplyPreset(preset);
+
+while (running) strip.Service();
+```
+
+```bash
+dotnet run --project src/Wled.Fx.Demo -- preset src/Wled.Fx.Demo/presets.sample.json
+```
+
+```bash
+dotnet run --project src/Wled.Fx.Demo -- preset src/Wled.Fx.Demo/presets.sample.json Sunset --length 60
+```
+
+The key is the ID the preset is filed under or its `n` name; with no key the file is listed. Size
+the strip the way the device was, since segment bounds are absolute pixel positions.
+
+What the loader reproduces, beyond the obvious mapping of `fx`, `pal`, `sx`, `ix`, `c1`-`c3` and
+`col` onto the segment, is the parts of the API that are easy to get wrong:
+
+- **Values are expressions.** `"sx":"~20"` means twenty faster than it is now, `"~-"` one slower,
+  `"w~10"` wraps off one end onto the other, `"r"` is random and `"1~5~"` cycles inside a range.
+  `"on":"t"` toggles. A loader that reads only numbers silently does the wrong thing on any preset
+  written by hand or by a button macro.
+- **Colours arrive five ways**: `[255,160,0]` channel arrays, `"FF8000"` hex (or `"FFA00040"` with
+  white), `{"g":200}` for one channel on its own, a bare `2700` read as a colour temperature, and
+  `"r"` for a random hue kept clear of the last one.
+- **Segments are addressed, not replaced.** An element with an `id` past the end appends, `"stop":0`
+  deletes, a bare object with no `id` applies to every selected segment, and one left out of the
+  array keeps whatever it was doing. `"rpt"` tiles a segment across the rest of the strip,
+  alternating direction, and `"i"` paints individual pixels and freezes the segment.
+- **Geometry is applied before the effect**, and only when it actually changed, so a preset that
+  switches effect alone does not throw away the pixel buffer.
+
+Left out is everything that is not rendering: nightlight, playlists, UDP sync, the `win` HTTP API
+bridge, `ps` preset chaining, ledmaps and reboot requests. Those keys are collected in
+`PresetLoader.Skipped` and printed by the demo rather than dropped in silence, and a preset that
+holds a playlist is refused with an explanation rather than half applied.
+
 ## Licence
 
 [EUPL v1.2 or later](LICENSE), the same terms as the WLED code this was translated from. Portions

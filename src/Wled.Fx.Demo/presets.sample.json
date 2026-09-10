@@ -1,0 +1,52 @@
+{
+  "0": {},
+  "1": {
+    "n": "Sunset",
+    "on": true,
+    "bri": 200,
+    "transition": 7,
+    "mainseg": 0,
+    "seg": [
+      {
+        "id": 0, "start": 0, "stop": 60, "grp": 1, "spc": 0, "of": 0,
+        "on": true, "frz": false, "bri": 255, "cct": 127, "set": 0,
+        "col": [[255, 160, 0], [64, 0, 96], [0, 0, 0]],
+        "fx": 2, "sx": 60, "ix": 200, "pal": 35,
+        "c1": 128, "c2": 128, "c3": 16,
+        "sel": true, "rev": false, "mi": false,
+        "o1": false, "o2": false, "o3": false, "si": 0, "m12": 0
+      }
+    ]
+  },
+  "2": {
+    "n": "Two Halves",
+    "on": true,
+    "bri": 255,
+    "transition": 0,
+    "seg": [
+      { "id": 0, "start": 0, "stop": 30, "n": "left", "col": ["FF3000", "000000", "000000"], "fx": 41, "sx": 180, "ix": 128, "pal": 0 },
+      { "id": 1, "start": 30, "stop": 60, "n": "right", "col": [[0, 128, 255]], "fx": 74, "sx": 200, "ix": 160, "pal": 0, "rev": true }
+    ]
+  },
+  "3": {
+    "n": "Matrix Swirl",
+    "on": true,
+    "bri": 190,
+    "seg": [
+      {
+        "id": 0, "start": 0, "stop": 16, "startY": 0, "stopY": 16,
+        "fx": 118, "sx": 128, "ix": 128, "pal": 11, "m12": 0,
+        "col": [[255, 255, 255], [0, 0, 0], [0, 0, 0]]
+      }
+    ]
+  },
+  "4": {
+    "n": "Nudge",
+    "bri": "~-20",
+    "seg": [{ "id": 0, "sx": "~20", "pal": "r" }]
+  },
+  "5": {
+    "n": "Evening",
+    "playlist": { "ps": [1, 2], "dur": [300, 300], "transition": [7, 7], "repeat": 0, "end": 0 }
+  }
+}
