@@ -449,15 +449,15 @@ public sealed partial class Segment
 
     private sealed class TransitionState(int durationMs)
     {
-        public uint Start { get; } = Clock.Millis;
+        public uint Start { get; set; } = Clock.Millis;
         public Rgbw[] Colors { get; } = new Rgbw[ColorCount];
         public Palette16 Palette { get; set; } = new();
         public int Duration { get; set; } = durationMs;
         public ushort Progress { get; set; }
         public int PreviousPaletteBlends { get; set; }
-        public byte StartPalette { get; init; }
-        public byte StartBrightness { get; init; }
-        public byte StartCct { get; init; }
+        public byte StartPalette { get; set; }
+        public byte StartBrightness { get; set; }
+        public byte StartCct { get; set; }
         public Segment? OldSegment { get; set; }
     }
 
@@ -491,7 +491,42 @@ public sealed partial class Segment
             if (_transition is { } running) running.Duration = 0;
             return;
         }
-        if (_transition is not null) return; // already fading; let the running one finish
+
+        if (_transition is { } current)
+        {
+            if (copySegment && current.OldSegment is null)
+            {
+                // A fade is already running - a colour change, say - and now something has changed
+                // that the outgoing effect has to keep drawing through, which it cannot do without
+                // a copy of itself. Take one now and run the fade from here, so the effect that is
+                // on screen is the one that fades out.
+                Segment outgoing = CloneForTransition();
+                for (int i = 0; i < ColorCount; i++) outgoing.Colors[i] = current.Colors[i];
+                outgoing.Palette = current.StartPalette;
+                outgoing.Opacity = current.StartBrightness;
+                outgoing.Cct = current.StartCct;
+                current.OldSegment = outgoing;
+                current.Start = Clock.Millis;
+                current.Duration = durationMs;
+                current.PreviousPaletteBlends = 0;
+            }
+            else if (current.Progress > 0)
+            {
+                // Part way through a fade and off again: the look being faded out of is no longer
+                // the one the fade began with but the blend showing right now, so rebase onto it.
+                for (int i = 0; i < ColorCount; i++)
+                    current.Colors[i] = Rgbw.Blend16(current.Colors[i], Colors[i], current.Progress);
+                current.StartBrightness = CurrentBrightness();
+                current.StartCct = CurrentCct();
+                if (Strip?.BlendingStyle == TransitionStyle.Fade)
+                {
+                    current.Start = Clock.Millis;
+                    current.Duration = durationMs;
+                    current.PreviousPaletteBlends = 0;
+                }
+            }
+            return;
+        }
 
         var t = new TransitionState(durationMs)
         {
@@ -504,6 +539,13 @@ public sealed partial class Segment
         if (copySegment) t.OldSegment = CloneForTransition();
         _transition = t;
     }
+
+    /// <summary>
+    /// Whether a change to this segment's look needs the outgoing effect kept alive. A plain
+    /// cross-fade blends the colours an effect draws with, so the one effect can carry it; every
+    /// other style moves pixels around and needs both effects drawing at once.
+    /// </summary>
+    private bool NeedsSegmentCopy => Strip is { BlendingStyle: not TransitionStyle.Fade };
 
     /// <summary>Ends any running transition immediately.</summary>
     public void StopTransition() => _transition = null;
@@ -580,7 +622,7 @@ public sealed partial class Segment
     public Segment SetColor(int slot, Rgbw color)
     {
         if ((uint)slot >= ColorCount || Colors[slot] == color) return this;
-        StartTransition(Strip?.TransitionDuration ?? 0, false);
+        StartTransition(Strip?.TransitionDuration ?? 0, NeedsSegmentCopy);
         Colors[slot] = color;
         return this;
     }
@@ -589,7 +631,7 @@ public sealed partial class Segment
     public Segment SetOpacity(byte opacity)
     {
         if (Opacity == opacity) return this;
-        StartTransition(Strip?.TransitionDuration ?? 0, false);
+        StartTransition(Strip?.TransitionDuration ?? 0, NeedsSegmentCopy);
         Opacity = opacity;
         return this;
     }
@@ -599,7 +641,7 @@ public sealed partial class Segment
     {
         if (kelvin > 255) kelvin = FastMath.Clamp((kelvin - 1900) >> 5, 0, 255); // 1900K..10060K
         if (Cct == kelvin) return this;
-        StartTransition(Strip?.TransitionDuration ?? 0, false);
+        StartTransition(Strip?.TransitionDuration ?? 0, NeedsSegmentCopy);
         Cct = (byte)kelvin;
         return this;
     }
@@ -640,7 +682,7 @@ public sealed partial class Segment
     public Segment SetPalette(byte palette)
     {
         if (palette == Palette) return this;
-        StartTransition(Strip?.TransitionDuration ?? 0, false);
+        StartTransition(Strip?.TransitionDuration ?? 0, NeedsSegmentCopy);
         Palette = palette;
         return this;
     }
